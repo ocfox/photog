@@ -1,0 +1,47 @@
+{
+  "name": "photog",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "npm run build && wrangler dev",
+    "prepare": "svelte-kit sync || echo ''",
+    "format": "prettier --write .",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "deploy": "npm run build && wrangler deploy",
+    "cf-typegen": "wrangler types && mv worker-configuration.d.ts src/"
+  },
+  "prettier": {
+    "plugins": [
+      "prettier-plugin-svelte"
+    ],
+    "overrides": [
+      {
+        "files": "*.svelte",
+        "options": {
+          "parser": "svelte"
+        }
+      }
+    ]
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250327.0",
+    "@sveltejs/adapter-auto": "^4.0.0",
+    "@sveltejs/adapter-cloudflare": "^6.0.1",
+    "@sveltejs/kit": "^2.16.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "prettier": "^3.5.3",
+    "prettier-plugin-svelte": "^3.3.3",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0",
+    "wrangler": "^4.6.0"
+  },
+  "dependencies": {
+    "exifreader": "^4.27.0"
+  }
+}

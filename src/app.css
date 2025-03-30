@@ -1,0 +1,52 @@
+/* Reset or base styles */
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    "Open Sans",
+    "Helvetica Neue",
+    sans-serif;
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+/* Light mode (default) */
+:root {
+  --bg-color: #ffffff;
+  --text-color: #111827;
+  /* gray-900 */
+  --link-color: #3b82f6;
+  /* blue-500 */
+}
+
+/* Dark mode styles */
+html.dark {
+  --bg-color: #111827;
+  /* gray-900 */
+  --text-color: #f9fafb;
+  /* gray-50 */
+  --link-color: #60a5fa;
+  /* blue-400 */
+}
+
+/* Apply theme variables */
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  min-height: 100vh;
+  /* Ensure body takes full height */
+  padding: 1rem;
+  /* Add some padding */
+}
+
+a {
+  color: var(--link-color);
+}

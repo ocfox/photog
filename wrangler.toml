@@ -1,0 +1,21 @@
+# Purpose: Configuration file for Cloudflare Workers
+# Documentation: https://developers.cloudflare.com/workers/platform/sites/start-from-scratch
+name = "photog"
+main = ".svelte-kit/cloudflare/_worker.js"
+compatibility_date = "2025-03-27"
+compatibility_flags = ["nodejs_compat"]
+account_id = "6f34c753d34513353b4673ddb9753c66"
+
+[[r2_buckets]]
+bucket_name = "photos"
+binding = "PHOTOS"
+
+[assets]
+binding = "ASSETS"
+directory = ".svelte-kit/cloudflare"
+
+[build]
+command = "npm run build"
+
+[observability]
+enabled = true
