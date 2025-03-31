@@ -9,6 +9,12 @@
   let error: string | null = null;
   let zoomLevel = 1;
   let isZoomed = false;
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  let translateX = 0;
+  let translateY = 0;
+  let imgElement: HTMLImageElement;
 
   try {
     photoSrc = "/api/" + decodeURIComponent(encodedSrc);
@@ -53,16 +59,26 @@
   function zoomIn() {
     zoomLevel = Math.min(zoomLevel + 0.25, 3);
     isZoomed = zoomLevel > 1;
+    if (!isZoomed) {
+      translateX = 0;
+      translateY = 0;
+    }
   }
 
   function zoomOut() {
     zoomLevel = Math.max(zoomLevel - 0.25, 0.5);
     isZoomed = zoomLevel > 1;
+    if (!isZoomed) {
+      translateX = 0;
+      translateY = 0;
+    }
   }
 
   function resetZoom() {
     zoomLevel = 1;
     isZoomed = false;
+    translateX = 0;
+    translateY = 0;
   }
 
   function handleWheel(event: WheelEvent) {
@@ -74,14 +90,63 @@
     }
   }
 
+  function handleMouseDown(event: MouseEvent) {
+    if (!isZoomed) return;
+
+    isDragging = true;
+    startX = event.clientX - translateX;
+    startY = event.clientY - translateY;
+    event.preventDefault();
+  }
+
+  function handleMouseMove(event: MouseEvent) {
+    if (!isDragging) return;
+
+    translateX = event.clientX - startX;
+    translateY = event.clientY - startY;
+    event.preventDefault();
+  }
+
+  function handleMouseUp() {
+    isDragging = false;
+  }
+
+  function handleTouchStart(event: TouchEvent) {
+    if (!isZoomed || event.touches.length !== 1) return;
+
+    isDragging = true;
+    startX = event.touches[0].clientX - translateX;
+    startY = event.touches[0].clientY - translateY;
+  }
+
+  function handleTouchMove(event: TouchEvent) {
+    if (!isDragging || event.touches.length !== 1) return;
+
+    translateX = event.touches[0].clientX - startX;
+    translateY = event.touches[0].clientY - startY;
+    event.preventDefault();
+  }
+
+  function handleTouchEnd() {
+    isDragging = false;
+  }
+
   onMount(() => {
     window.addEventListener("keydown", handleKeydown);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("touchend", handleTouchEnd);
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
     document.body.classList.add("overflow-hidden");
     document.body.classList.add("photo-preview-mode");
   });
 
   onDestroy(() => {
     window.removeEventListener("keydown", handleKeydown);
+    window.removeEventListener("mouseup", handleMouseUp);
+    window.removeEventListener("mousemove", handleMouseMove);
+    window.removeEventListener("touchend", handleTouchEnd);
+    window.removeEventListener("touchmove", handleTouchMove);
     document.body.classList.remove("overflow-hidden");
     document.body.classList.remove("photo-preview-mode");
   });
@@ -122,10 +187,14 @@
         role="presentation"
       >
         <img
+          bind:this={imgElement}
           class="preview-image"
+          class:draggable={isZoomed}
           src={photoSrc}
           alt="Large preview"
-          style="transform: scale({zoomLevel});"
+          style="transform: scale({zoomLevel}) translate({translateX}px, {translateY}px);"
+          on:mousedown={handleMouseDown}
+          on:touchstart={handleTouchStart}
         />
 
         {#if isZoomed}
@@ -195,6 +264,11 @@
     max-width: 100%;
     object-fit: contain;
     transition: transform 0.2s ease-out;
+  }
+
+  .preview-image.draggable {
+    cursor: grab;
+    transition: none;
   }
 
   .zoom-indicator {
