@@ -10,6 +10,7 @@
   let imgElement: HTMLImageElement;
   let isLoaded = false;
   let imageCache: Map<string, string>;
+  let isLoading = true;
 
   // Subscribe to the cache store
   imageCacheStore.subscribe((cache) => {
@@ -19,6 +20,7 @@
     if (imgElement && imageCache.has(key) && !isLoaded) {
       imgElement.src = imageCache.get(key) || "";
       isLoaded = true;
+      isLoading = false;
     }
   });
 
@@ -27,10 +29,15 @@
     if (imageCache.has(key)) {
       imgElement.src = imageCache.get(key) || "";
       isLoaded = true;
+      isLoading = false;
     } else {
       lazyLoad(imgElement);
     }
   });
+
+  function handleImageLoad() {
+    isLoading = false;
+  }
 
   function lazyLoad(imageElement: HTMLImageElement) {
     if (!imageElement) return;
@@ -46,6 +53,7 @@
           if (imageCache.has(key)) {
             imageElement.src = imageCache.get(key) || "";
             isLoaded = true;
+            isLoading = false;
             observer.unobserve(imageElement);
             return;
           }
@@ -71,6 +79,7 @@
             .catch((error) => {
               console.error("Error fetching image:", error);
               imageElement.src = "/error-image.png";
+              isLoading = false;
               observer.unobserve(imageElement);
             });
         }
@@ -97,7 +106,18 @@
   on:click={handleClick}
   aria-label={`View large preview for ${alt}`}
 >
-  <img bind:this={imgElement} data-key={key} {alt} />
+  {#if isLoading}
+    <div class="loading-animation">
+      <div class="shimmer"></div>
+    </div>
+  {/if}
+  <img
+    bind:this={imgElement}
+    data-key={key}
+    {alt}
+    class:hidden={isLoading}
+    on:load={handleImageLoad}
+  />
 </button>
 
 <style>
@@ -116,6 +136,7 @@
     transition:
       transform 0.2s ease-in-out,
       box-shadow 0.2s ease-in-out;
+    position: relative;
   }
 
   .photo-card:hover,
@@ -134,5 +155,57 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .photo-card img.hidden {
+    opacity: 0;
+  }
+
+  .loading-animation {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(200, 200, 200, 0.1);
+    overflow: hidden;
+  }
+
+  .shimmer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.2) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    animation: shimmer 1.5s infinite;
+    transform: skewX(-20deg);
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-150%) skewX(-20deg);
+    }
+    100% {
+      transform: translateX(150%) skewX(-20deg);
+    }
+  }
+
+  :global(html.dark) .loading-animation {
+    background-color: rgba(30, 30, 30, 0.3);
+  }
+
+  :global(html.dark) .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
   }
 </style>
