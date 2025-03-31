@@ -1,19 +1,40 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import PhotoCard from "./PhotoCard.svelte";
+  import { browser } from "$app/environment";
+  import { photoStore } from "./stores";
 
-  export let photos: Image[] = [];
   export let batchSize = 12;
   export let threshold = 200;
 
-  export let visiblePhotos: Image[] = [];
+  let visiblePhotos: Image[] = [];
   let currentIndex = 0;
   let container: HTMLElement;
   let loading = false;
   let allLoaded = false;
 
+  // Subscribe to the photo store
+  let photos: Image[] = [];
+  let storeLoaded = false;
+
+  photoStore.subscribe((data) => {
+    photos = data.photos;
+    storeLoaded = data.loaded;
+
+    // If we already have photos in the store and no visible photos yet,
+    // initialize the visible photos
+    if (storeLoaded && photos.length > 0 && visiblePhotos.length === 0) {
+      loadMorePhotos();
+    }
+  });
+
   onMount(() => {
-    loadMorePhotos();
+    // Only fetch if we don't already have data
+    if (!storeLoaded) {
+      fetchImages();
+    } else if (visiblePhotos.length === 0) {
+      loadMorePhotos();
+    }
 
     const handleScroll = () => {
       if (loading || allLoaded) return;
@@ -34,14 +55,12 @@
   });
 
   function loadMorePhotos() {
-    if (allLoaded) return;
+    if (allLoaded || photos.length === 0) return;
 
     loading = true;
 
     const endIndex = Math.min(currentIndex + batchSize, photos.length);
-
     visiblePhotos = [...visiblePhotos, ...photos.slice(currentIndex, endIndex)];
-
     currentIndex = endIndex;
 
     if (currentIndex >= photos.length) {
@@ -57,18 +76,32 @@
   }
 
   async function fetchImages(): Promise<void> {
+    // Don't fetch if we already have data
+    if (storeLoaded && photos.length > 0) return;
+
     try {
+      loading = true;
       const response = await fetch("/api/list");
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      visiblePhotos = await response.json();
+      const fetchedPhotos = (await response.json()) as Array<{
+        key: string;
+        alt?: string;
+      }>;
+
+      // Update the store
+      photoStore.set({
+        photos: fetchedPhotos,
+        loaded: true,
+      });
+
+      loading = false;
     } catch (error) {
       console.error("Error fetching image keys:", error);
+      loading = false;
     }
   }
-
-  fetchImages();
 </script>
 
 <div class="photo-grid-container" bind:this={container}>
