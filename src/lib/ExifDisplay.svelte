@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-
+  import { browser } from '$app/environment'; // Added
+  import { goto } from '$app/navigation'; // Added
   import ExifReader from "exifreader";
 
   export let src: string;
+  export let photoKey: string; // Added
 
   export let showExampleOnError: boolean = true;
 
@@ -45,10 +47,67 @@
 
   let isVisible = false;
 
+  // --- Admin State ---
+  let isAdmin: boolean | undefined = undefined; // Admin status
+  let deleteError: string | null = null; // Error message for delete operation
+  let isDeleting = false; // Track delete operation state
+
+  // --- Functions ---
   function toggleVisibility() {
     isVisible = !isVisible;
   }
 
+  async function checkAdminStatus() {
+		if (!browser) return;
+		try {
+			const response = await fetch('/api/ip');
+			if (!response.ok) throw new Error(`Failed to check admin status: ${response.status}`);
+			const data = await response.json() as { isAdmin: boolean };
+			isAdmin = data.isAdmin;
+		} catch (err) {
+			console.error('Error checking admin status:', err);
+			isAdmin = false; // Assume not admin on error
+		}
+	}
+
+	async function handleDelete() {
+		if (!browser || !isAdmin || !photoKey) return;
+
+		if (!confirm(`Are you sure you want to delete photo "${photoKey}"? This cannot be undone.`)) {
+			return;
+		}
+
+		isDeleting = true;
+		deleteError = null;
+
+		try {
+			const response = await fetch(`/api/delete/${encodeURIComponent(photoKey)}`, {
+				method: 'DELETE'
+			});
+
+			if (!response.ok) {
+				let errorMsg = `Failed to delete: ${response.status}`;
+				try {
+					const errorData = await response.json() as { message?: string };
+					if (errorData?.message) {
+						errorMsg = errorData.message;
+					}
+				} catch {} // Ignore parsing errors
+				throw new Error(errorMsg);
+			}
+
+			console.log(`Photo ${photoKey} deleted successfully.`);
+			goto('/'); // Navigate back to home page on successful delete
+
+		} catch (err: unknown) {
+			console.error(`Error deleting photo ${photoKey}:`, err);
+			deleteError = err instanceof Error ? err.message : 'An unknown error occurred during deletion.';
+		} finally {
+			isDeleting = false;
+		}
+	}
+
+  // --- Lifecycle ---
   onMount(async () => {
     isLoading = true;
     error = null;
@@ -171,6 +230,11 @@
     }
 
     isLoading = false;
+
+    // Check admin status only on browser mount
+    if (browser) {
+      checkAdminStatus();
+    }
   });
 </script>
 
@@ -200,6 +264,23 @@
     </div>
   {:else}
     <p>No EXIF data available.</p>
+  {/if}
+
+  <!-- Admin Delete Button -->
+  {#if isAdmin}
+  <div class="admin-actions">
+    {#if deleteError}
+      <p class="delete-error">{deleteError}</p>
+    {/if}
+    <button
+      class="delete-button"
+      on:click|stopPropagation={handleDelete}
+      disabled={isDeleting}
+      aria-label="Delete this photo"
+    >
+      {#if isDeleting}Deleting...{:else}Delete Photo{/if}
+    </button>
+  </div>
   {/if}
 </div>
 
@@ -300,4 +381,55 @@
   .lens {
     opacity: 0.9;
   }
+
+  /* Admin Actions */
+  .admin-actions {
+    margin-top: 1rem; /* Add some space above */
+    border-top: 1px solid rgba(255, 255, 255, 0.1); /* Separator line */
+    padding-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  :global(html.dark) .admin-actions {
+    border-top-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .delete-button {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+    background-color: var(--error-dark, #dc3545);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    width: 100%; /* Make button full width within container */
+    text-align: center;
+  }
+  .delete-button:hover:not(:disabled) {
+    background-color: #c82333; /* Darker red */
+  }
+  .delete-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .delete-error {
+    background-color: rgba(220, 53, 69, 0.2); /* Semi-transparent red */
+    color: #fca5a5; /* Light red text */
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8em;
+    border: 1px solid #dc3545; /* Red border */
+    width: 100%; /* Full width */
+    box-sizing: border-box;
+  }
+  :global(html.dark) .delete-error {
+    color: #f87171;
+    background-color: rgba(220, 53, 69, 0.25);
+    border-color: #c82333;
+  }
+
 </style>

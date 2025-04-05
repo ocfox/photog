@@ -18,9 +18,6 @@
 	let translateX = 0;
 	let translateY = 0;
 	let imgElement: HTMLImageElement;
-	let isAdmin: boolean | undefined = undefined; // Admin status
-	let deleteError: string | null = null; // Error message for delete operation
-	let isDeleting = false; // Track delete operation state
 
 	// --- Initialization ---
 	try {
@@ -47,64 +44,9 @@
 		}
 	}
 
-	async function checkAdminStatus() {
-		// console.log('checkAdminStatus entered'); // Removed debug log
-		if (!browser) {
-			// console.log('checkAdminStatus: Not in browser, exiting.'); // Removed debug log
-			return; // Only run in browser
-		}
-		try {
-			// console.log('checkAdminStatus: Running in browser, fetching /api/ip...'); // Removed debug log
-			const response = await fetch('/api/ip');
-			// console.log('Fetch response received:', response); // Removed debug log
-			if (!response.ok) throw new Error(`Failed to check admin status: ${response.status}`); // Include status
-			const data = await response.json() as { isAdmin: boolean };
-			// console.log('Admin check API response JSON:', data); // Removed debug log
-			isAdmin = data.isAdmin;
-			// console.log('isAdmin state set to:', isAdmin); // Removed debug log
-		} catch (err) {
-			console.error('Error checking admin status:', err);
-			isAdmin = false; // Assume not admin on error
-			// console.log('isAdmin state set to false due to error.'); // Removed debug log
-		}
-	}
+	// Removed checkAdminStatus function
 
-	async function handleDelete() {
-		if (!browser || !isAdmin || !photoKey) return;
-
-		if (!confirm(`Are you sure you want to delete photo "${photoKey}"? This cannot be undone.`)) {
-			return;
-		}
-
-		isDeleting = true;
-		deleteError = null;
-
-		try {
-			const response = await fetch(`/api/delete/${encodeURIComponent(photoKey)}`, {
-				method: 'DELETE'
-			});
-
-			if (!response.ok) {
-				let errorMsg = `Failed to delete: ${response.status}`;
-				try {
-					const errorData = await response.json() as { message?: string };
-					if (errorData?.message) {
-						errorMsg = errorData.message;
-					}
-				} catch {} // Ignore parsing errors
-				throw new Error(errorMsg);
-			}
-
-			console.log(`Photo ${photoKey} deleted successfully.`);
-			goto('/'); // Navigate back to home page on successful delete
-
-		} catch (err: unknown) {
-			console.error(`Error deleting photo ${photoKey}:`, err);
-			deleteError = err instanceof Error ? err.message : 'An unknown error occurred during deletion.';
-		} finally {
-			isDeleting = false;
-		}
-	}
+	// Removed handleDelete function
 
 	function handleKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
@@ -223,9 +165,7 @@
 			document.body.classList.add('overflow-hidden');
 			document.body.classList.add('photo-preview-mode');
 
-			// Check admin status when component mounts in the browser (moved inside if(browser))
-			// console.log('onMount: Calling checkAdminStatus()'); // Removed debug log
-			checkAdminStatus(); // Moved here
+			// Removed checkAdminStatus() call
 
 			// Return cleanup function
 			return () => {
@@ -240,10 +180,8 @@
 		} else {
 			// console.log('onMount: Not running inside browser block'); // Removed debug log
 		}
-		// Removed checkAdminStatus() call from here as it's now inside the if(browser) block
 	});
 
-	// console.log('--- Script execution finished before template ---'); // Removed debug log
 </script>
 
 <svelte:head>
@@ -299,27 +237,7 @@
 					<div class="zoom-indicator">{Math.round(zoomLevel * 100)}%</div>
 				{/if}
 
-				<!-- Removed DEBUG: Display Admin Status -->
-
-				<!-- EXIF Display -->
-				<ExifDisplay src={photoSrc} />
-
-				<!-- Admin Delete Button -->
-				{#if isAdmin}
-				<div class="admin-actions">
-					{#if deleteError}
-						<p class="delete-error">{deleteError}</p>
-					{/if}
-					<button
-						class="delete-button"
-						on:click|stopPropagation={handleDelete}
-						disabled={isDeleting}
-						aria-label="Delete this photo"
-					>
-						{#if isDeleting}Deleting...{:else}Delete Photo{/if}
-					</button>
-				</div>
-				{/if}
+				<ExifDisplay src={photoSrc} {photoKey} />
 			</div>
 		</div>
 	{:else}
@@ -427,45 +345,6 @@
 	}
 	.preview-overlay:focus {
 		outline: none;
-	}
-
-	/* Admin Actions */
-	.admin-actions {
-		position: absolute;
-		bottom: 1rem; /* Adjust positioning as needed */
-		left: 1rem;  /* Position near bottom-left */
-		z-index: 2; /* Ensure it's above other elements if necessary */
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.5rem;
-	}
-
-	.delete-button {
-		padding: 0.5rem 1rem;
-		font-size: 0.9rem;
-		background-color: var(--error-dark, #dc3545);
-		color: white;
-		border: none;
-		border-radius: 4px;
-		cursor: pointer;
-		transition: background-color 0.2s;
-	}
-	.delete-button:hover:not(:disabled) {
-		background-color: #c82333; /* Darker red */
-	}
-	.delete-button:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.delete-error {
-		background-color: var(--error-light, #f8d7da);
-		color: var(--error-dark, #721c24);
-		padding: 0.5rem;
-		border-radius: 4px;
-		font-size: 0.9em;
-		border: 1px solid var(--error-border, #f5c6cb);
 	}
 
 </style>
