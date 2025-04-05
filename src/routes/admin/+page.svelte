@@ -137,13 +137,10 @@
     <title>Admin - Photo Management</title>
 </svelte:head>
 
-<h1>Admin Area</h1>
-
 {#await checkAdminStatus()}
 	<p>Checking authorization...</p>
 {:then}
 	{#if isAdmin}
-		<h2>Upload New Photo</h2>
 		<Upload on:uploadSuccess={handleUploadSuccess} />
 
         <hr class="separator" />

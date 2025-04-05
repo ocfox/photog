@@ -1,15 +1,21 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
-	import { onDestroy, createEventDispatcher } from 'svelte'; // Import createEventDispatcher
+	import { onDestroy, createEventDispatcher } from 'svelte';
 
-	const dispatch = createEventDispatcher(); // Create dispatcher instance
+	const dispatch = createEventDispatcher();
 
-	let selectedFile: File | null = null;
-	let previewUrl: string | null = null; // State for image preview URL
+	// --- State for Multiple Files ---
+	let selectedFiles: File[] = [];
+	interface Preview {
+		name: string;
+		url: string;
+	}
+	let previewUrls: Preview[] = []; // Array to hold previews
 	let isDragging = false;
 	let isLoading = false;
-	let uploadError: string | null = null;
-	let uploadedKey: string | null = null; // Store the key returned by the API
+	let uploadErrors: { [fileName: string]: string } = {}; // Track errors per file
+	let uploadSuccesses: { [fileName: string]: string } = {}; // Track success keys per file
+	let overallUploadMessage: string | null = null; // General status message
 
 	// Interfaces for API response shapes
 	interface UploadSuccessResponse {
@@ -23,42 +29,59 @@
 	const validImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
 	const acceptedFileTypes = validImageTypes.join(','); // For the input accept attribute
 
-	function resetState() {
-		uploadError = null;
-		uploadedKey = null;
-		isLoading = false;
-
-		// Revoke previous URL if exists
-		if (previewUrl) {
-			URL.revokeObjectURL(previewUrl);
-			previewUrl = null;
-		}
+	function clearPreviews() {
+		// Revoke previous URLs
+		previewUrls.forEach(p => URL.revokeObjectURL(p.url));
+		previewUrls = [];
 	}
 
-	function updateSelectedFile(file: File | null) {
-		// Clear previous state first
-		resetState();
+	function resetUploadStatus() {
+		uploadErrors = {};
+		uploadSuccesses = {};
+		overallUploadMessage = null;
+		isLoading = false;
+	}
 
-		if (file && !validImageTypes.includes(file.type)) {
-			selectedFile = null; // Clear selection
-			uploadError = 'Invalid file type. Please select a JPEG, PNG, or WebP image.';
-			return; // Don't proceed to create preview
+	// Renamed from updateSelectedFile to handle multiple files
+	function updateSelectedFiles(files: FileList | null) {
+		// Clear previous previews and status
+		clearPreviews();
+		resetUploadStatus();
+
+		if (!files || files.length === 0) {
+			selectedFiles = [];
+			return;
 		}
 
-		selectedFile = file;
+		const validFiles: File[] = [];
+		const newPreviews: Preview[] = [];
+		let invalidTypeFound = false;
 
-		// Create preview URL if a valid file is selected
-		if (file) {
-			console.log('Selected file:', file.name, file.type);
-			previewUrl = URL.createObjectURL(file);
-		} else {
-			// This case handles deselection via file input, resetState already cleared previewUrl
+		for (const file of Array.from(files)) {
+			if (validImageTypes.includes(file.type)) {
+				validFiles.push(file);
+				newPreviews.push({ name: file.name, url: URL.createObjectURL(file) });
+				console.log('Selected file:', file.name, file.type);
+			} else {
+				invalidTypeFound = true;
+				console.warn(`Invalid file type skipped: ${file.name} (${file.type})`);
+			}
+		}
+
+		selectedFiles = validFiles;
+		previewUrls = newPreviews;
+
+		if (invalidTypeFound) {
+			// Use overall message for general errors like invalid types
+			overallUploadMessage = 'Some files were skipped due to invalid type (only JPEG, PNG, WebP allowed).';
 		}
 	}
 
 	const handleFileSelect = (event: Event) => {
 		const target = event.target as HTMLInputElement;
-		updateSelectedFile(target.files && target.files.length > 0 ? target.files[0] : null);
+		updateSelectedFiles(target.files);
+		// Reset file input value to allow selecting the same file(s) again
+		target.value = '';
 	};
 
 	// Drag and Drop Handlers
@@ -85,63 +108,82 @@
 		event.preventDefault();
 		isDragging = false;
 		if (event.dataTransfer && event.dataTransfer.files.length > 0) {
-			updateSelectedFile(event.dataTransfer.files[0]);
+			updateSelectedFiles(event.dataTransfer.files);
 		}
 	};
 
+	// Modified to handle multiple file uploads sequentially
 	const handleFileUpload = async () => {
-		if (!selectedFile) {
-			uploadError = 'No file selected.';
+		if (selectedFiles.length === 0) {
+			overallUploadMessage = 'No valid files selected.';
 			return;
 		}
 
 		isLoading = true;
-		uploadError = null; // Clear error explicitly before new upload
-		uploadedKey = null; // Clear previous success key
+		resetUploadStatus(); // Clear previous statuses before starting new batch
+		overallUploadMessage = `Uploading ${selectedFiles.length} file(s)...`;
 
-		const formData = new FormData();
-		formData.append('file', selectedFile);
+		let successCount = 0;
+		let errorCount = 0;
+		const currentErrors: { [fileName: string]: string } = {};
+		const currentSuccesses: { [fileName: string]: string } = {};
 
-		try {
-			const response = await fetch('/api/upload', {
-				method: 'POST',
-				body: formData
-			});
 
-			const data: unknown = await response.json();
+		for (const file of selectedFiles) {
+			const formData = new FormData();
+			formData.append('file', file);
 
-			if (response.ok) {
-				console.log('Upload successful:', data);
-				const successData = data as UploadSuccessResponse;
-				uploadedKey = successData.key;
-				selectedFile = null; // Clear selection after successful upload
-				if (previewUrl) { // Also clear preview
-					URL.revokeObjectURL(previewUrl);
-					previewUrl = null;
+			try {
+				const response = await fetch('/api/upload', {
+					method: 'POST',
+					body: formData
+				});
+
+				const data: unknown = await response.json();
+
+				if (response.ok) {
+					const successData = data as UploadSuccessResponse;
+					console.log(`Upload successful: ${file.name}`, successData);
+					currentSuccesses[file.name] = successData.key;
+					successCount++;
+					// Dispatch success event *for each* successful upload
+					dispatch('uploadSuccess', { key: successData.key, filename: file.name });
+				} else {
+					const errorData = data as UploadErrorResponse;
+					console.error(`Upload failed for ${file.name}:`, data);
+					currentErrors[file.name] = errorData.message || `Upload failed with status: ${response.status}`;
+					errorCount++;
 				}
-                // Dispatch success event
-                dispatch('uploadSuccess', { key: uploadedKey });
-
-			} else {
-				console.error('Upload failed:', data);
-				const errorData = data as UploadErrorResponse;
-				uploadError = errorData.message || 'File upload failed with status: ' + response.status;
-                // Keep selected file and preview on failed upload for retry
+			} catch (error: unknown) {
+				console.error(`Fetch error during upload for ${file.name}:`, error);
+				currentErrors[file.name] = error instanceof Error ? error.message : 'An unexpected network error occurred.';
+				errorCount++;
 			}
-		} catch (error: unknown) {
-			console.error('Fetch error during upload:', error);
-			uploadError = error instanceof Error ? error.message : 'An unexpected error occurred.';
-            // Keep selected file and preview on failed upload for retry
-		} finally {
-			isLoading = false;
+		}
+
+		// Update reactive states after loop finishes
+		uploadErrors = currentErrors;
+		uploadSuccesses = currentSuccesses;
+		isLoading = false;
+
+		// Set final status message
+		if (errorCount === 0) {
+			overallUploadMessage = `Successfully uploaded ${successCount} file(s).`;
+			selectedFiles = []; // Clear selection on full success
+			clearPreviews();
+		} else if (successCount === 0) {
+			overallUploadMessage = `Failed to upload ${errorCount} file(s). See details below.`;
+			// Keep selection for retry on full failure
+		} else {
+			overallUploadMessage = `Uploaded ${successCount} file(s) successfully, ${errorCount} failed. See details below.`;
+			// Partially clear selection? Or keep all for retry? Let's keep all for now.
+			// Consider filtering selectedFiles based on errors if needed
 		}
 	};
 
-	// Cleanup object URL on component destroy
+	// Cleanup object URLs on component destroy
 	onDestroy(() => {
-		if (previewUrl) {
-			URL.revokeObjectURL(previewUrl);
-		}
+		clearPreviews();
 	});
 </script>
 
@@ -152,26 +194,40 @@
 	on:dragleave={handleDragLeave}
 	on:dragover={handleDragOver}
 	on:drop={handleDrop}
+	role="region"
+	aria-label="File Upload Drop Zone"
 >
-	<p>{isDragging ? 'Drop the file here!' : 'Drag and drop an image file here or click to select'}</p>
+	<p>{isDragging ? 'Drop files here!' : 'Drag and drop image files here or click to select'}</p>
 
-	{#if previewUrl}
-		<div class="preview-container">
-			<img src={previewUrl} alt="Image preview" class="preview-image" />
+	<!-- Multiple Previews -->
+	{#if previewUrls.length > 0}
+		<div class="previews-grid">
+			{#each previewUrls as preview (preview.url)}
+				<div class="preview-item">
+					<img src={preview.url} alt={`Preview of ${preview.name}`} class="preview-image" />
+					<span class="preview-name">{preview.name}</span>
+				</div>
+			{/each}
 		</div>
 	{/if}
 
-	{#if selectedFile}
-		<p class="selected-file">
-			{previewUrl ? 'Previewing:' : 'Selected:'} {selectedFile.name} ({Math.round(selectedFile.size / 1024)} KB)
-		</p>
+	{#if selectedFiles.length > 0}
+		<p class="selected-file-count">Selected {selectedFiles.length} file(s).</p>
+		<!-- Optionally list selected file names -->
+		<!--
+        <ul class="selected-file-list">
+            {#each selectedFiles as file (file.name)}
+                <li>{file.name} ({Math.round(file.size / 1024)} KB)</li>
+            {/each}
+        </ul>
+        -->
 	{/if}
 
 	<label class="file-input-label" class:disabled={isLoading}>
-		{#if !selectedFile}
-			Select File
+		{#if selectedFiles.length === 0}
+			Select Files
 		{:else}
-			Change File
+			Change Files
 		{/if}
 		<input
 			type="file"
@@ -180,38 +236,92 @@
 			disabled={isLoading}
 			aria-hidden="true"
 			style="display: none;"
+			multiple
 		/>
 	</label>
 
-	{#if selectedFile}
-		<button class="upload-button" on:click={handleFileUpload} disabled={isLoading || !selectedFile}>
+	{#if selectedFiles.length > 0}
+		<button class="upload-button" on:click={handleFileUpload} disabled={isLoading || selectedFiles.length === 0}>
 			{#if isLoading}
-				Uploading...
+				Uploading {selectedFiles.length} file(s)...
 			{:else}
-				Upload File
+				Upload {selectedFiles.length} File{#if selectedFiles.length > 1}s{/if}
 			{/if}
 		</button>
 	{/if}
 
-	{#if uploadError}
-		<p class="status error" transition:fade>{uploadError}</p>
+	<!-- Overall Status Message -->
+	{#if overallUploadMessage && !isLoading}
+ 		<p class="status info">{overallUploadMessage}</p>
+ 	{/if}
+
+	<!-- Detailed Error Messages -->
+	{#if Object.keys(uploadErrors).length > 0 && !isLoading}
+		<div class="status error details">
+				{#each Object.entries(uploadErrors) as [filename, errorMsg] (filename)}
+					<li><strong>{filename}:</strong> {errorMsg}</li>
+				{/each}
+		</div>
 	{/if}
 
-	{#if uploadedKey && !isLoading} <!-- Show success message only after loading finishes -->
-		<p class="status success" transition:fade>
-			File uploaded successfully! Link:
-			<a href={`/photo/${uploadedKey}`} target="_blank" rel="noopener noreferrer">
-				/photo/{uploadedKey}
-			</a>
-		</p>
-	{/if}
+	<!-- Detailed Success Messages (Optional) -->
+    {#if Object.keys(uploadSuccesses).length > 0 && !isLoading}
+        <div class="status success details">
+            <h4>Successful Uploads:</h4>
+            <ul>
+                {#each Object.entries(uploadSuccesses) as [filename, key] (filename)}
+                    <li>
+                        <strong>{filename}</strong>: Link
+                        <a href={`/photo/${key}`} target="_blank" rel="noopener noreferrer">
+                            /photo/{key}
+                        </a>
+                    </li>
+                {/each}
+            </ul>
+        </div>
+    {/if}
 </div>
 
 <style>
+	/* Add styles for grid and individual items */
+	.previews-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); /* Responsive grid */
+		gap: 10px;
+		margin-bottom: 15px;
+		max-height: 300px; /* Limit overall preview area height */
+		overflow-y: auto; /* Add scroll if needed */
+		padding: 5px;
+		border: 1px solid var(--border-color, #eee);
+		border-radius: 5px;
+	}
+
+	.preview-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+	}
+
+	.preview-image {
+		max-width: 100%;
+		max-height: 80px; /* Smaller height for grid items */
+		object-fit: contain;
+		border-radius: 4px;
+		margin-bottom: 5px; /* Space between image and name */
+	}
+
+	.preview-name {
+		font-size: 0.8em;
+		color: var(--text-muted, #666);
+		word-break: break-all; /* Prevent long names breaking layout */
+		line-height: 1.2;
+	}
+
 	.drop-area {
 		border: 2px dashed var(--text-color, #ccc);
 		border-radius: 10px;
-		padding: 30px;
+		padding: 20px; /* Slightly reduced padding */
 		text-align: center;
 		cursor: pointer;
 		transition: background-color 0.3s, border-color 0.3s;
@@ -230,26 +340,16 @@
 		color: var(--text-muted, #666);
 	}
 
-	.selected-file {
+	.selected-file-count {
 		font-style: italic;
 		color: var(--text-color, #333);
 		margin-bottom: 15px;
 	}
 
-	.preview-container {
-		margin-bottom: 15px;
-		max-height: 200px; /* Limit preview height */
-		display: flex;
-		justify-content: center;
-	}
+	/* Remove single preview container styles if no longer needed */
+	/* .preview-container { ... } */
+	/* .preview-image { ... } */
 
-	.preview-image {
-		max-width: 100%;
-		max-height: 200px; /* Match container height */
-		object-fit: contain;
-		border-radius: 5px;
-		border: 1px solid var(--border-color, #ddd);
-	}
 
 	.file-input-label {
 		display: inline-block;
@@ -314,4 +414,34 @@
 		color: var(--error-dark, #721c24);
 		border: 1px solid var(--error-border, #f5c6cb);
 	}
+
+    /* Style for info message */
+    .status.info {
+		background-color: var(--info-light, #d1ecf1);
+		color: var(--info-dark, #0c5460);
+		border: 1px solid var(--info-border, #bee5eb);
+	}
+
+    /* Style for detailed lists */
+    .details {
+        text-align: left;
+        margin-top: 10px;
+    }
+    .details h4 {
+        margin-top: 0;
+        margin-bottom: 5px;
+        font-size: 1em;
+    }
+    .details ul {
+        list-style: disc;
+        padding-left: 20px;
+        margin: 0;
+    }
+    .details li {
+        margin-bottom: 3px;
+        font-size: 0.9em;
+    }
+    .details a {
+        color: inherit; /* Inherit color from parent status */
+    }
 </style>
