@@ -195,7 +195,7 @@
 {/await}
 
 <style>
-    h1, h2 {
+    h2 {
         margin-bottom: 1rem;
         color: var(--heading-color, inherit);
     }
