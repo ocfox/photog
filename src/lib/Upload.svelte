@@ -112,6 +112,36 @@
 		}
 	};
 
+	// Function to remove a specific file by index
+	function removeFile(indexToRemove: number) {
+		if (indexToRemove < 0 || indexToRemove >= selectedFiles.length) {
+			console.error('Invalid index for file removal:', indexToRemove);
+			return;
+		}
+
+		const fileToRemove = selectedFiles[indexToRemove];
+		const previewToRemove = previewUrls[indexToRemove];
+
+		console.log(`Removing file: ${fileToRemove.name}`);
+
+		// Revoke the object URL to free memory
+		URL.revokeObjectURL(previewToRemove.url);
+
+		// Remove the file and its preview
+		selectedFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
+		previewUrls = previewUrls.filter((_, index) => index !== indexToRemove);
+
+		// Optionally reset overall message if all files are removed
+		if (selectedFiles.length === 0) {
+			resetUploadStatus();
+			// Keep the drop area message, but clear upload status
+			overallUploadMessage = null;
+		} else {
+			// Update count in existing messages if needed, or just let the next upload handle it
+			// For simplicity, we might just let the count update naturally or when upload is attempted
+		}
+	}
+
 	// Modified to handle multiple file uploads sequentially
 	const handleFileUpload = async () => {
 		if (selectedFiles.length === 0) {
@@ -201,11 +231,22 @@
 
 	<!-- Multiple Previews -->
 	{#if previewUrls.length > 0}
-		<div class="previews-grid">
-			{#each previewUrls as preview (preview.url)}
-				<div class="preview-item">
-					<img src={preview.url} alt={`Preview of ${preview.name}`} class="preview-image" />
-					<span class="preview-name">{preview.name}</span>
+	<div class="previews-grid">
+			{#each previewUrls as preview, index (preview.url)}
+				<div class="preview-item" transition:fade>
+					<div
+						class="preview-content-wrapper"
+						on:click={() => removeFile(index)}
+						role="button"
+						tabindex="0"
+						aria-label={`Remove ${preview.name}`}
+						title="Click to remove"
+						on:keypress={(e) => { if (e.key === 'Enter' || e.key === ' ') removeFile(index); }}
+					>
+						<img src={preview.url} alt={`Preview of ${preview.name}`} class="preview-image" />
+						<span class="preview-name">{preview.name}</span>
+						<!-- Removed the explicit button -->
+					</div>
 				</div>
 			{/each}
 		</div>
@@ -291,19 +332,73 @@
 		margin-bottom: 15px;
 		max-height: 300px; /* Limit overall preview area height */
 		overflow-y: auto; /* Add scroll if needed */
-		padding: 5px;
-		border: 1px solid var(--border-color, #eee);
+		padding: 10px; /* Slightly more padding */
+		border: 1px solid var(--border-color, #ddd);
 		border-radius: 5px;
 	}
 
 	.preview-item {
+		/* Removed direct flex styles from preview-item */
+		position: relative; /* Needed for absolute positioning of children */
+	}
+
+	/* New wrapper for content inside preview-item */
+	.preview-content-wrapper {
+		position: relative; /* Context for the remove button and overlay */
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		text-align: center;
+		width: 100%; /* Ensure wrapper takes full width of grid cell */
+		overflow: hidden; /* Contain overlay */
+		border-radius: 4px; /* Match image border radius */
+		cursor: default; /* Default cursor */
+		transition: transform 0.1s ease-out; /* Add slight scale effect */
 	}
 
+	/* Overlay effect on hover */
+	.preview-content-wrapper::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.5); /* Dark overlay */
+		opacity: 0;
+		transition: opacity 0.2s ease-in-out;
+		z-index: 1; /* Below the button, above the image */
+		pointer-events: none; /* Allow clicks through to image/button */
+	}
+
+	.preview-content-wrapper:hover::after {
+		opacity: 1;
+	}
+
+	/* Apply hover effects directly to the wrapper */
+	.preview-content-wrapper:hover {
+		cursor: pointer; /* Indicate clickability */
+		transform: scale(0.98); /* Slightly shrink on hover/focus */
+	}
+	.preview-content-wrapper:active {
+		transform: scale(0.95); /* Slightly smaller when clicked */
+	}
+	/* Add focus style for accessibility */
+	.preview-content-wrapper:focus-visible {
+		outline: 2px solid var(--primary-color, #007bff);
+		outline-offset: 2px;
+		transform: scale(0.98);
+	}
+	.preview-content-wrapper:focus-visible::after {
+		opacity: 1; /* Show overlay on focus too */
+	}
+
+
+	/* Removed .remove-button styles */
+
+
 	.preview-image {
+		display: block; /* Prevents extra space below */
 		max-width: 100%;
 		max-height: 80px; /* Smaller height for grid items */
 		object-fit: contain;
